@@ -1,12 +1,13 @@
 1）主机网卡配置
+
+
 2）关闭防火墙、selinux及libvirtd服务
 
 [root@qll251 ~]# systemctl stop firewalld
 [root@qll251 ~]# systemctl disable firewalld
 
 [root@qll251 ~]# vim /etc/selinux/config
-改：SELINUX=enforcing
-为：SELINUX=disabled
+
 
 [root@qll251 ~]# systemctl stop libvirtd.service
 [root@qll251 ~]# systemctl disable libvirtd.service
