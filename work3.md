@@ -1,236 +1,28 @@
-1）主机网卡配置
-
-
-2）关闭防火墙、selinux及libvirtd服务
-
-[root@qll251 ~]# systemctl stop firewalld
-[root@qll251 ~]# systemctl disable firewalld
-
-[root@qll251 ~]# vim /etc/selinux/config
-
-
-[root@qll251 ~]# systemctl stop libvirtd.service
-[root@qll251 ~]# systemctl disable libvirtd.service
-
-[root@qll251 ~]# reboot #重启生效
-
-3）安装epel源
-
-yum -y install epel-release
-4）CentOS 部分常用软件安装
-
-yum install -y vim net-tools  bash-completion-extras git
-
-5）配置主机名及hosts文件
-
-[root@qll251 ~]# hostname qll251
-[root@qll251 ~]# echo "qll251" > /etc/hostname
-[root@qll251 ~]# echo "192.168.1.251  qll251" >> /etc/hosts
-
-6）同步时间
-
-[root@qll251 ~]# yum -y install ntp
-[root@qll251 ~]# systemctl start ntpd
-[root@qll251 ~]# systemctl enable ntpd
-
-7）配置 pip 镜像源，方便快速下载python库
-
-[root@qll251 ~]# mkdir ~/.pip
-[root@qll251 ~]# vim ~/.pip/pip.conf
-[global]
-index-url = http://mirrors.aliyun.com/pypi/simple/
-[install]
-trusted-host=mirrors.aliyun.com
-
-3.2 安装基础包和docker服务
-
-1）安装基础包
-
-yum -y install python-devel libffi-devel gcc openssl-devel  python-pip
-
-2）升级pip版本，不然后期安装会有报警
-
-3）安装docker-ce
-
-安装依赖包
-yum -y install yum-utils device-mapper-persistent-data lvm2
-
-添加docker-ce yum源文件
-yum-config-manager --add-repo http://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
-1
-安装docker-ce
- yum -y install docker-ce
-
-启动docker服务
-systemctl start docker
-systemctl enable docker
-
-4）指定docker 镜像加速器
-
-[root@qll251 ~]# vim /etc/docker/daemon.json
-        添加如下内容：
-{
-  "registry-mirrors": ["https://0i6rnnzu.mirror.aliyuncs.com"]
-}
-
-
-5）设置docker volume卷挂载方式
-
-[root@qll251 ~]# mkdir /etc/systemd/system/docker.service.d
-[root@qll251 ~]# vim  /etc/systemd/system/docker.service.d/kolla.conf
-  # 添加如下内容
-[Service]
-MountFlags=shared
-
-解释一下：MountFlags=shared，表示当宿主机新增分区时，docker服务无需重启即可识别。添加此参数后期OpenStack中使用cinder存储时，新加磁盘也比较方便
-6）重启使配置生效
-
-systemctl daemon-reload
-systemctl restart docker
-systemctl enable docker
-
-3.3 从github 获取Kolla和Kolla-Ansible
-
-1）安装ansible
-
-yum -y install ansible
-1
-2）下载kolla及kolla-ansible代码
-
-git clone https://github.com/openstack/kolla -b stable/stein
-git clone https://github.com/openstack/kolla-ansible -b stable/stein
-  # 如果已有镜像，只执行第二步即可
-
-3）手动安装kolla-ansible
-
-python ~/kolla-ansible/setup.py install
-1
-4）安装kolla-ansible需要依赖包
-
-
-[root@qll251 ~]# pip install -r /root/kolla-ansible/requirements.txt
-1
-2
-
-
-如果出现此报错，我们强制更新即可；
-
-执行：
-
-[root@qll251 ~]# pip install --ignore-installed PyYAML
-1
-
-
-5）安装kolla需要依赖包
-
-[root@qll251 ~]# pip install -r /root/kolla/requirements.txt
-1
-注意：如果出现类似如下错误：
-
-requests 2.20.0 has requirement idna<2.8,>=2.5, but you'll have idna 2.4 which is incompatible
-
-同样，强制更新requets库即可；
-
-[root@qll251 ~]# pip install --ignore-installed requests
-1
-6）拷贝配置文件
-
-[root@qll251 ~]# cd ~/kolla-ansible/
-[root@qll251 kolla-ansible]# cp -r ./etc/kolla/* /etc/kolla/
-[root@qll251 kolla-ansible]# cp ./ansible/inventory/* /etc/kolla/
-
-#看下我们都拷贝了哪些文件
-[root@qll251 ~]# ls /etc/kolla/
-all-in-one  globals.yml  multinode  passwords.yml
-[root@qll251 ~]#
-
-配置文件解释：
-
-all-in-one #安装单节点OpenStack的ansible自动安装配置文件
-multinode # 安装多节点OpenStack的ansible自动安装配置文件
-globals.yml # 部署OpenStack的自定义配置文件
-passwords.yml #存放OpenStack各个服务的密码
-
-6）生成随机密码
-
-[root@qll251 ~]# kolla-genpwd
-1
-使用kolla提供的密码生成工具自动生成OpenStack各服务的密码，如果密码不填充，后面的部署环境检查时不会通过的。
-7）修改随机密码文件
-
-# 为了方便登录Dashboard，我们将密码修改为123123
-[root@qll251 ~]# vim /etc/kolla/passwords.yml
- 165 keystone_admin_password: 123123
-8）修改globals.yml配置文件
-
-[root@qll251 ~]#  vim /etc/kolla/globals.yml
-# 指定镜像的系统版本
- 15 kolla_base_distro: "centos"
-# 指定安装方式
- 18 kolla_install_type: "binary"
-# 指定安装stein版本的OpenStack
- 21 openstack_release: "stein"
-# 本次实验采用all-in-one模式，未启用高可用。填写宿主机IP即可
- 31 kolla_internal_vip_address: "192.168.1.251"
-# OpenStack内部管理网络
- 89 network_interface: "eth0"
-# Neutron外网网络
-107 neutron_external_interface: "eth1"
-# 本次实验采用all-in-one模式，未启用高可用
-192 enable_haproxy: "no"
-
-1）生成SSH Key，并授信本节点
-
-ssh-keygen
-ssh-copy-id root@192.168.1.251
-2）配置单节点all-in-one配置文件
-
-[root@qll251 ~]# vim /etc/kolla/all-in-one
-# 将文件中所有的localhost替换成qll251
-:1,$s/localhost/qll251/
-
-# 去掉文件中所有包含“ansible_connection=local”
-:1,$s/ansible_connection=local//
-
-3）带有kolla的引导服务器部署依赖关系
-
-[root@qll251 ~]# kolla-ansible -i /etc/kolla/all-in-one bootstrap-servers
-
-4）对主机执行预部署检查
-
-[root@qll251 ~]# kolla-ansible -i /etc/kolla/all-in-one prechecks
-
-
-5）拉取OpenStack镜像
-
-[root@qll251 ~]# kolla-ansible -i /etc/kolla/all-in-one  pull
-
-
-6）执行OpenStack部署
-
-kolla-ansible -i /etc/kolla/all-in-one  deploy
-1
-7）验证部署
-
-kolla-ansible -i /etc/kolla/all-in-one  post-deploy
-1
-
-
-
-同时也生成了admin用户的凭证， 即/etc/kolla/admin-openrc.sh文件
-
-我们看下该凭证：
-
-
-
-4 登录OpenStack云平台
-
-在浏览器中输入：http://192.168.1.251
-
-用户名：admin
-
-密码：123123
-
-
-到此已完成OpenStack云平台的部署，明天我们再来讨论下OpenStack 云平台基本使用方法及利用OpenStack客户端命令创建一台测试云主机。
-
+# 1. 云计算中的工作负载有哪几种模式？它们的特征是什么？
+- 模式1：时开时停模式
+这种模式下负载会有一段时间呈现活动停止的现象。
+- 模式2：用量迅速增长模式
+这种模式下负载会持续并且迅速增长。典型是一些正在扩张用户群体的企业。
+- 模式3：瞬时暴涨模式
+这种模式下负载在平日里相对均衡稳定，但会在某一时段内突然暴涨到平日里的数倍甚至于数十倍。
+- 模式4：周期性增减模式
+这种模式下负载会呈现出周期性地增减，可以很容易看出其周期性并根据周期性来调整资源配置。
+### 2. 如何避免云计算资源“超配”带来的问题？
+计算资源超配是指提供的计算资源总量超过了物理主机本身的资源限制，主要是为了应对计算情况下云计算系统的可靠性。
+①要监控云计算的使用情况，分析数据，然后测试不同大小的实例以找到最合适的实例。诸如Densify、SolarWinds Virtualization Manager和Veeam ONE云计算资源管理工具可以提供帮助。②企业不应该进行监视和调整，而是要为云平台清理软件。
+### 3.如何理解“云栈”和“云体”的概念？
+###### 云栈
+云栈又称云平台，是在云上面建造的运行环境。它能够支持应用程序的发布、运行、监控、调度、伸缩，并为应用程序提供辅助服务的机制，如访问控制和权限管理等。如微软的Windows Azure、谷歌的App Engine、VMWare的Cloud Foundry都是云平台。
+在云栈里，每一层都提供一种抽象。最下面的是物理硬件层，之后每往上一层，其离物理现实的距离就更远一些，易用性就会增加一分。每一层用来实现抽象的手段都是某种或某几种服务，也称为功能。如果两个服务处于等价的抽象层，则属于云栈里的同一层。
+###### 云体
+云体是云计算的物质基础，是云计算所用到的资源集合。它是构成云计算的软硬件环境，如网络、服务器、存储器、交换机等，通过网络连接在一起。某些情况下，广义的云体也可以包括数据中心及其辅助设施如电力、空调、机架、冷却等系统。鉴于当前的云计算都是基于数据中心来进行，云体就是数据中心。
+### 4. 什么是软件定义的数据中心？它的特点是什么？
+###### 定义
+VMware对其描述为:“一个统一的数据中心平台，提供了前所未有的自动化、灵活性和效率，并转变IT交付的方式。汇集和汇总计算、存储、网络、安全性等可用性服务，并交付软件，通过智能化的策略驱动的软件进行管理。”
+服务器在虚拟化应用的基础上，SDDC能够虚拟网络和存储资源，使抽象的数据中心的基础设施可以通过应用程序和软件进行访问。SDDC的目标是使数据中心运营的许多方面受益:更有效地利用资源;更加容易配置和重新配置:以及更快地部署新的应用程序。等
+###### 特点
+- 标准化-跨多个标准x86硬件池交付的同构基础架构可消除不必不的复杂性。
+- 全面-针对整个数据中心结构优化的统一平台，可灵活支持任何乃至所有工作负载。
+- 自适应-可根据不断变化的应用需求动态配置和重新配置的自编程基础架构，从而实现最大的吞吐量、敏捷性和效率。
+- 自动化-采用内置智能机制的管理框架，用于消除复杂而易出问题的管理脚本，能够以更少的手动工作实现云级运营并节省大量成本。
+- 恢复能力强-基于软件的体系结构可以弥补硬件故障，并以最低的成本提供前所未有的恢复能力。
